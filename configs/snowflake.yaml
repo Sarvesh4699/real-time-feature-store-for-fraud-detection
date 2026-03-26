@@ -1,0 +1,35 @@
+# Snowflake Configuration
+# -----------------------
+# Snowflake is the cold-path feature warehouse. Nightly batch jobs compute
+# expensive aggregates (30d/90d windows, percentiles) that are too costly
+# for real-time computation. Results are backfilled to Redis.
+
+connection:
+  account: ${SNOWFLAKE_ACCOUNT:-your_account.us-east-1}
+  user: ${SNOWFLAKE_USER:-feature_store_svc}
+  password: ${SNOWFLAKE_PASSWORD:-changeme}
+  warehouse: ${SNOWFLAKE_WAREHOUSE:-COMPUTE_WH}
+  database: ${SNOWFLAKE_DATABASE:-FRAUD_DETECTION}
+  schema: ${SNOWFLAKE_SCHEMA:-FEATURE_STORE}
+  role: ${SNOWFLAKE_ROLE:-DATA_ENGINEER}
+  # Use key-pair auth in production instead of password
+  # private_key_path: /secrets/snowflake_rsa_key.p8
+
+warehouse_config:
+  # Auto-suspend after 5 min of inactivity to save costs
+  auto_suspend: 300
+  auto_resume: true
+  # MEDIUM is sufficient for nightly batch; scale up for backfills
+  size: MEDIUM
+  max_cluster_count: 2
+
+query:
+  timeout_seconds: 600      # 10 min max query time
+  retry_count: 2
+  retry_delay_seconds: 10
+
+# dbt project reference
+dbt:
+  project_dir: ./sql/dbt_models
+  profiles_dir: ~/.dbt
+  target: prod

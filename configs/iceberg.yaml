@@ -1,0 +1,59 @@
+# Apache Iceberg Configuration
+# ----------------------------
+# Iceberg provides time-travel queries for feature debugging.
+# Every streaming micro-batch and nightly batch job writes feature
+# snapshots to Iceberg tables. When investigating a past prediction,
+# we query AS OF <timestamp> to reproduce the exact feature vector
+# the model saw — eliminating training-serving skew debugging.
+
+catalog:
+  type: ${ICEBERG_CATALOG_TYPE:-rest}
+  uri: ${ICEBERG_CATALOG_URI:-http://localhost:8181}
+  warehouse: ${ICEBERG_WAREHOUSE:-s3://fraud-detection-lake/iceberg}
+  # For AWS Glue catalog:
+  # type: glue
+  # For Hive Metastore:
+  # type: hive
+  # uri: thrift://localhost:9083
+
+namespace: ${ICEBERG_NAMESPACE:-fraud_features}
+
+tables:
+  # Feature snapshots written by the streaming path
+  realtime_features:
+    name: realtime_feature_snapshots
+    # Partition by date for efficient time-range scans
+    partition_spec:
+      - field: event_date
+        transform: day
+    # Sort within partitions for scan efficiency
+    sort_order:
+      - field: account_id
+        direction: asc
+      - field: event_timestamp
+        direction: desc
+
+  # Feature snapshots written by the batch path
+  batch_features:
+    name: batch_feature_snapshots
+    partition_spec:
+      - field: computation_date
+        transform: day
+    sort_order:
+      - field: account_id
+        direction: asc
+
+snapshot_retention:
+  # Keep snapshots for 30 days. Older snapshots are expired but the
+  # underlying data files are retained per the table's data retention.
+  max_snapshot_age_days: 30
+  min_snapshots_to_keep: 10
+  # Run snapshot expiration as part of the nightly batch DAG
+  expire_on_batch: true
+
+# Time-travel query settings
+time_travel:
+  # Max lookback window for AS OF queries
+  max_lookback_days: 30
+  # Default timestamp format for queries
+  timestamp_format: "%Y-%m-%d %H:%M:%S"

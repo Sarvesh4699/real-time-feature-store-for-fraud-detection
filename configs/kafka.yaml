@@ -1,0 +1,52 @@
+# Kafka Configuration
+# -------------------
+# 8 partitions keyed on account_id ensures per-user ordering.
+# This is critical for accurate windowed aggregations — if a user's
+# events are spread across partitions, we can't guarantee the order
+# needed for features like txn_velocity or running counts.
+
+broker:
+  bootstrap_servers: ${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}
+  security_protocol: PLAINTEXT  # Use SASL_SSL in production
+  # sasl_mechanism: SCRAM-SHA-256
+  # sasl_plain_username: ${KAFKA_SASL_USER}
+  # sasl_plain_password: ${KAFKA_SASL_PASSWORD}
+
+topics:
+  transactions:
+    name: ${KAFKA_TRANSACTIONS_TOPIC:-fraud.transactions.raw}
+    num_partitions: 8
+    replication_factor: ${KAFKA_REPLICATION_FACTOR:-1}
+    # Retention: 7 days. We replay from Iceberg for longer lookbacks.
+    config:
+      retention.ms: 604800000       # 7 days
+      cleanup.policy: delete
+      max.message.bytes: 1048576    # 1MB max message
+      min.insync.replicas: 1        # Set to 2 in production
+
+  dead_letter:
+    name: ${KAFKA_DLQ_TOPIC:-fraud.transactions.dlq}
+    num_partitions: 2
+    replication_factor: ${KAFKA_REPLICATION_FACTOR:-1}
+    config:
+      retention.ms: 2592000000     # 30 days — DLQ messages need manual review
+      cleanup.policy: delete
+
+consumer:
+  group_id: ${KAFKA_CONSUMER_GROUP:-fraud-feature-consumer}
+  auto_offset_reset: earliest
+  enable_auto_commit: false        # Manual commits after successful processing
+  max_poll_records: 500
+  max_poll_interval_ms: 300000     # 5 min max processing time per batch
+  session_timeout_ms: 30000
+  heartbeat_interval_ms: 10000
+  fetch_max_bytes: 52428800        # 50MB
+
+producer:
+  acks: all                        # Wait for all replicas
+  retries: 3
+  retry_backoff_ms: 1000
+  max_in_flight_requests_per_connection: 1  # Ensures ordering with retries
+  compression_type: snappy
+  linger_ms: 10                    # Small batching window for throughput
+  batch_size: 16384

@@ -1,0 +1,37 @@
+# Redis Configuration
+# -------------------
+# Redis serves as the unified feature serving layer for both hot and cold paths.
+# Hot path (streaming) writes features with short TTLs; cold path (batch) backfills
+# with longer TTLs. The ML inference service reads from a single Redis interface.
+
+connection:
+  host: ${REDIS_HOST:-localhost}
+  port: ${REDIS_PORT:-6379}
+  db: ${REDIS_DB:-0}
+  password: ${REDIS_PASSWORD:-}
+  decode_responses: true
+  socket_timeout: 5
+  socket_connect_timeout: 5
+  retry_on_timeout: true
+  max_connections: 50
+
+# Key naming convention: {prefix}:{account_id}:{feature_group}
+# Example: fraud:features:acct_12345:realtime
+key_prefix: ${REDIS_KEY_PREFIX:-fraud:features}
+
+ttl:
+  # Hot path features refresh every streaming micro-batch (~10s).
+  # TTL is a safety net: if streaming stops, stale features expire
+  # rather than silently serving outdated values.
+  realtime_features_seconds: 3600      # 1 hour
+  # Batch features refresh nightly. 36h TTL gives headroom if the
+  # batch job runs late or needs a retry.
+  batch_features_seconds: 129600       # 36 hours
+  # Feature metadata (schema version, last-updated timestamps)
+  metadata_seconds: 86400              # 24 hours
+
+# Pipeline settings for bulk writes (batch backfill)
+pipeline:
+  batch_size: 1000
+  max_retries: 3
+  retry_delay_seconds: 2
